@@ -61,14 +61,15 @@ function Snake({ playerId, color, isLocal }: { playerId: string, color: string, 
         curr.x = targetX;
         curr.y = targetY;
       } else {
-        const dist = Math.abs(targetX - curr.x) + Math.abs(targetY - curr.y);
-        if (dist > 10) {
+        const dx = targetX - curr.x;
+        const dy = targetY - curr.y;
+        if (Math.abs(dx) > WORLD_SIZE / 2 || Math.abs(dy) > WORLD_SIZE / 2) {
           curr.x = targetX;
           curr.y = targetY;
         } else {
           const lerpFactor = 15;
-          curr.x += (targetX - curr.x) * lerpFactor * delta;
-          curr.y += (targetY - curr.y) * lerpFactor * delta;
+          curr.x += dx * lerpFactor * delta;
+          curr.y += dy * lerpFactor * delta;
         }
       }
       
@@ -273,12 +274,12 @@ export function GameScene() {
       head.x += Math.cos(localPlayerRef.current.currentAngle) * speed * delta;
       head.y += Math.sin(localPlayerRef.current.currentAngle) * speed * delta;
 
-      // Boundary check
-      const boundary = WORLD_SIZE / 2;
-      if (head.x < -boundary) head.x = -boundary;
-      if (head.x > boundary) head.x = boundary;
-      if (head.y < -boundary) head.y = -boundary;
-      if (head.y > boundary) head.y = boundary;
+      // Wrap around boundaries
+      const halfSize = WORLD_SIZE / 2;
+      if (head.x < -halfSize) head.x += WORLD_SIZE;
+      if (head.x > halfSize) head.x -= WORLD_SIZE;
+      if (head.y < -halfSize) head.y += WORLD_SIZE;
+      if (head.y > halfSize) head.y -= WORLD_SIZE;
 
       localPlayerRef.current.segments.unshift(head);
 
@@ -300,8 +301,10 @@ export function GameScene() {
       for (const orbId in gs.orbs) {
         if (localCollectedOrbs.has(orbId)) continue;
         const orb = gs.orbs[orbId];
-        const dx = head.x - orb.x;
-        const dy = head.y - orb.y;
+        let dx = Math.abs(head.x - orb.x);
+        if (dx > halfSize) dx = WORLD_SIZE - dx;
+        let dy = Math.abs(head.y - orb.y);
+        if (dy > halfSize) dy = WORLD_SIZE - dy;
         const distSq = dx * dx + dy * dy;
 
         if (distSq < magnetRange * magnetRange) {
@@ -318,12 +321,23 @@ export function GameScene() {
             delete gs.orbs[orbId]; // predict locally
             sendCollectOrb(orbId);
           } else if (hasMagnetPowerUp) {
-            // Magnet attraction effect (visual only or actually update pos in gs but gs is shared...)
-            // Better to let it just pull them in on the next few frames?
-            // Since we predict locally, we can actually move the orb towards the head in the gs.orbs
+            // Magnet attraction effect (wrap aware)
             const pullStrength = 15 * delta;
-            orb.x += (head.x - orb.x) * pullStrength;
-            orb.y += (head.y - orb.y) * pullStrength;
+            let moveX = head.x - orb.x;
+            if (moveX > halfSize) moveX -= WORLD_SIZE;
+            if (moveX < -halfSize) moveX += WORLD_SIZE;
+            let moveY = head.y - orb.y;
+            if (moveY > halfSize) moveY -= WORLD_SIZE;
+            if (moveY < -halfSize) moveY += WORLD_SIZE;
+
+            orb.x += moveX * pullStrength;
+            orb.y += moveY * pullStrength;
+            
+            // Re-wrap orb if it gets pulled across boundary
+            if (orb.x < -halfSize) orb.x += WORLD_SIZE;
+            if (orb.x > halfSize) orb.x -= WORLD_SIZE;
+            if (orb.y < -halfSize) orb.y += WORLD_SIZE;
+            if (orb.y > halfSize) orb.y -= WORLD_SIZE;
           }
         }
       }
@@ -342,8 +356,11 @@ export function GameScene() {
         const other = gs.players[otherId];
         if (other.state !== 'alive') continue;
         for (const seg of other.segments) {
-          const dx = head.x - seg.x;
-          const dy = head.y - seg.y;
+          let dx = Math.abs(head.x - seg.x);
+          if (dx > halfSize) dx = WORLD_SIZE - dx;
+          let dy = Math.abs(head.y - seg.y);
+          if (dy > halfSize) dy = WORLD_SIZE - dy;
+          
           if (dx * dx + dy * dy < 2.25) {
             collided = true;
             break;
@@ -385,9 +402,21 @@ export function GameScene() {
 
       const targetZ = Math.min(45, Math.max(20, 20 + localPlayerRef.current.score * 0.2));
       
-      // Smooth camera follow predicted head
-      camera.position.x += (head.x - camera.position.x) * 10 * delta;
-      camera.position.y += (head.y - camera.position.y) * 10 * delta;
+      // Smooth camera follow predicted head (with wrap support)
+      const camDx = head.x - camera.position.x;
+      if (Math.abs(camDx) > WORLD_SIZE / 2) {
+        camera.position.x = head.x;
+      } else {
+        camera.position.x += camDx * 10 * delta;
+      }
+
+      const camDy = head.y - camera.position.y;
+      if (Math.abs(camDy) > WORLD_SIZE / 2) {
+        camera.position.y = head.y;
+      } else {
+        camera.position.y += camDy * 10 * delta;
+      }
+      
       camera.position.z += (targetZ - camera.position.z) * 4 * delta;
       camera.lookAt(camera.position.x, camera.position.y, 0);
 

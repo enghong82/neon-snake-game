@@ -156,11 +156,12 @@ function updateBots(delta: number) {
     head.x += Math.cos(bot.currentAngle) * speed * delta;
     head.y += Math.sin(bot.currentAngle) * speed * delta;
 
-    // Boundary check for bots
-    const boundary = WORLD_SIZE / 2 - 5;
-    if (head.x < -boundary || head.x > boundary || head.y < -boundary || head.y > boundary) {
-      bot.currentAngle += Math.PI * 0.5;
-    }
+    // Wrap around boundaries
+    const halfSize = WORLD_SIZE / 2;
+    if (head.x < -halfSize) head.x += WORLD_SIZE;
+    if (head.x > halfSize) head.x -= WORLD_SIZE;
+    if (head.y < -halfSize) head.y += WORLD_SIZE;
+    if (head.y > halfSize) head.y -= WORLD_SIZE;
 
     bot.segments.unshift(head);
     const targetLength = Math.floor(bot.score);
